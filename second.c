@@ -58,7 +58,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Gather local portions of matrix c to process 0
-    MPI_Gather(matrix_c, ROWS*COLS/size, MPI_INT, matrix_c, ROWS*COLS/size, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Gatherv(matrix_c, ROWS*COLS/size, MPI_INT, matrix_c, ROWS*COLS/size, MPI_INT, 0, MPI_COMM_WORLD);
 
     // Print result
     if (rank == 0) {
@@ -78,10 +78,9 @@ int main(int argc, char *argv[]) {
         }
         printf("Matrix C:\n");
         for (i = 0; i < ROWS; i++) {
-            for (j = 0; j < COLS; j++) {
-                printf("%d ", matrix_a[i][j]);
+            for (j = 0; j < COLS; j++){
+                printf("%d ", matrix_c[i][j]);
             }
-            printf("\n");
         }
     }
 }
