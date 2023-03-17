@@ -2,93 +2,86 @@
 #include <stdlib.h>
 #include <mpi.h>
 
-#define N 100 // size of matrix
+#define ROWS 3
+#define COLS 3
 
 int main(int argc, char *argv[]) {
-    int rank, size, i, j, k, tag = 0;
-    double *matrixA, *matrixB, *matrixC;
-    double startTime, endTime;
+    int rank, size, i, j, k;
+    int **matrix_a, **matrix_b, **matrix_c;
+    int *send_buffer, *recv_buffer;
+    MPI_Status status;
 
+    // Initialize MPI environment
     MPI_Init(&argc, &argv);
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    int numElements = N*N/size;
-    int sendCount = numElements;
-    int recvCount = numElements;
+    // Allocate memory for matrices
+    matrix_a = (int **) malloc(ROWS * sizeof(int *));
+    matrix_b = (int **) malloc(COLS * sizeof(int *));
+    matrix_c = (int **) malloc(ROWS * sizeof(int *));
+    for (i = 0; i < ROWS; i++) {
+        matrix_a[i] = (int *) malloc(COLS * sizeof(int));
+        matrix_c[i] = (int *) malloc(COLS * sizeof(int));
+    }
+    for (i = 0; i < COLS; i++) {
+        matrix_b[i] = (int *) malloc(ROWS * sizeof(int));
+    }
 
-    matrixA = (double *) malloc(numElements*sizeof(double));
-    matrixB = (double *) malloc(N*N*sizeof(double));
-    matrixC = (double *) calloc(numElements, sizeof(double));
-
-    // initialize matrix B
-    if(rank == 0) {
-        for(i = 0; i < N; i++) {
-            for(j = 0; j < N; j++) {
-                matrixB[i*N+j] = i+j;
+    // Initialize matrices
+    if (rank == 0) {
+        for (i = 0; i < ROWS; i++) {
+            for (j = 0; j < COLS; j++) {
+                matrix_a[i][j] = i + j;
             }
         }
-
-        // scatter matrix B to all processes
-        for(i = 1; i < size; i++) {
-            MPI_Send(matrixB, N*N, MPI_DOUBLE, i, tag, MPI_COMM_WORLD);
-        }
-    }
-    else {
-        // receive matrix B from process 0
-        MPI_Recv(matrixB, N*N, MPI_DOUBLE, 0, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    }
-
-    // initialize matrix A
-    for(i = 0; i < numElements; i++) {
-        for(j = 0; j < N; j++) {
-            matrixA[i*N+j] = (i+(rank*numElements)/N)*j;
-        }
-    }
-
-    // send matrix A to all other processes
-    for(i = 0; i < size; i++) {
-        if(i != rank) {
-            MPI_Send(matrixA+(i*numElements), sendCount, MPI_DOUBLE, i, tag, MPI_COMM_WORLD);
-        }
-    }
-
-    // receive matrix A from all other processes
-    for(i = 0; i < size; i++) {
-        if(i != rank) {
-            MPI_Recv(matrixA+(i*numElements), recvCount, MPI_DOUBLE, i, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        }
-    }
-
-    // matrix multiplication
-    for(i = 0; i < numElements; i++) {
-        for(k = 0; k < N; k++) {
-            for(j = 0; j < N; j++) {
-                matrixC[i] += matrixA[i*N+k] * matrixB[k*N+j];
+        for (i = 0; i < COLS; i++) {
+            for (j = 0; j < ROWS; j++) {
+                matrix_b[i][j] = i * j;
             }
         }
     }
 
-    // send matrix C to process 0
-    if(rank != 0) {
-        MPI_Send(matrixC, sendCount, MPI_DOUBLE, 0, tag, MPI_COMM_WORLD);
-    }
-    else {
-        // receive matrix C from all other processes
-        for(i = 1; i < size; i++) {
-            MPI_Recv(matrixC+(i*numElements), recvCount, MPI_DOUBLE, i, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        }
-        endTime = MPI_Wtime();
+    // Scatter matrix b to all processes
+    send_buffer = (int *) malloc(ROWS * sizeof(int));
+    recv_buffer = (int *) malloc(ROWS * sizeof(int));
+    MPI_Scatter(matrix_b, ROWS, MPI_INT, send_buffer, ROWS, MPI_INT, 0, MPI_COMM_WORLD);
 
-        // print the results
-        printf("Matrix C:\n");
-        for(i = 0; i < N; i++) {
-            for(j = 0; j < N; j++) {
-                printf("%f ", matrixC[i*N+j]);
+    // Compute local portion of matrix c
+    for (i = 0; i < ROWS; i++) {
+        for (j = 0; j < COLS; j++) {
+            matrix_c[i][j] = 0;
+            for (k = 0; k < ROWS; k++) {
+                matrix_c[i][j] += matrix_a[i][k] * send_buffer[k];
+            }
+        }
+    }
+
+    // Gather local portions of matrix c to process 0
+    MPI_Gather(matrix_c, ROWS*COLS/size, MPI_INT, matrix_c, ROWS*COLS/size, MPI_INT, 0, MPI_COMM_WORLD);
+
+    // Print result
+    if (rank == 0) {
+        printf("Matrix A:\n");
+        for (i = 0; i < ROWS; i++) {
+            for (j = 0; j < COLS; j++) {
+                printf("%d ", matrix_a[i][j]);
             }
             printf("\n");
         }
-
+        printf("Matrix B:\n");
+        for (i = 0; i < COLS; i++) {
+            for (j = 0; j < ROWS; j++) {
+                printf("%d ", matrix_b[i][j]);
+            }
+            printf("\n");
+        }
+        printf("Matrix C:\n");
+        for (i = 0; i < ROWS; i++) {
+            for (j = 0; j < COLS; j++) {
+                printf("%d ", matrix_a[i][j]);
+            }
+            printf("\n");
+        }
     }
 }
-
